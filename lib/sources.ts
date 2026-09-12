@@ -1,69 +1,119 @@
-// Taxonomy for Croma MCP tools, mirroring the docs navigation
-// (country → category → source). Tool names arrive as e.g.
-// `rama_judicial_cases_by_radicado`; the first segment identifies the source.
+// Taxonomy for Croma MCP tools. Source and country come from each tool's
+// description, which ends with "(Source: SUNAT; Country: Peru)", so new tools
+// group correctly without code changes. Only display niceties are curated
+// here: Spanish country names and the docs categories. Shared by server and
+// client, so it must stay free of server-only imports.
 
-export type Country = "Colombia" | "Perú" | "México" | "Global";
-
-export const COUNTRIES: Country[] = ["Colombia", "Perú", "México", "Global"];
-
-type SourceMeta = {
-  label: string;
-  country: Country;
-  category: string;
+export type CatalogTool = {
+  name: string;
+  title: string;
+  description: string;
+  source: string;
+  country: string;
 };
 
-const SOURCES: Record<string, SourceMeta> = {
-  // Colombia — Justicia y litigios
-  rama: { label: "Rama Judicial", country: "Colombia", category: "Justicia y litigios" },
-  samai: { label: "SAMAI", country: "Colombia", category: "Justicia y litigios" },
-  consejo: { label: "Consejo de Estado", country: "Colombia", category: "Justicia y litigios" },
-  cndj: { label: "CNDJ", country: "Colombia", category: "Justicia y litigios" },
-  superfinanciera: { label: "Superfinanciera", country: "Colombia", category: "Justicia y litigios" },
-  // Colombia — Verificación de personas
-  registraduria: { label: "Registraduría", country: "Colombia", category: "Verificación de personas" },
-  policia: { label: "Policía Nacional", country: "Colombia", category: "Verificación de personas" },
-  procuraduria: { label: "Procuraduría", country: "Colombia", category: "Verificación de personas" },
-  contraloria: { label: "Contraloría", country: "Colombia", category: "Verificación de personas" },
-  contaduria: { label: "Contaduría", country: "Colombia", category: "Verificación de personas" },
-  adres: { label: "ADRES", country: "Colombia", category: "Verificación de personas" },
-  sicaac: { label: "SICAAC", country: "Colombia", category: "Verificación de personas" },
-  // Colombia — Empresas e impuestos
-  rues: { label: "RUES", country: "Colombia", category: "Empresas e impuestos" },
-  supersociedades: { label: "Supersociedades", country: "Colombia", category: "Empresas e impuestos" },
-  dian: { label: "DIAN", country: "Colombia", category: "Empresas e impuestos" },
-  // Colombia — Contratación pública
-  secop: { label: "SECOP", country: "Colombia", category: "Contratación pública" },
-  ancp: { label: "ANCP-CCE", country: "Colombia", category: "Contratación pública" },
-  // Colombia — Vehículos y tránsito
-  runt: { label: "RUNT", country: "Colombia", category: "Vehículos y tránsito" },
-  simit: { label: "SIMIT", country: "Colombia", category: "Vehículos y tránsito" },
-  // Colombia — Otros
-  legalize: { label: "Legalize", country: "Colombia", category: "Otros" },
-  siata: { label: "SIATA", country: "Colombia", category: "Otros" },
-  // Perú — Identidad e impuestos
-  sunat: { label: "SUNAT", country: "Perú", category: "Identidad e impuestos" },
-  rree: { label: "RREE", country: "Perú", category: "Identidad e impuestos" },
-  sat: { label: "SAT Lima", country: "Perú", category: "Identidad e impuestos" },
-  // Perú — Vehículos y tránsito
-  callao: { label: "Callao", country: "Perú", category: "Vehículos y tránsito" },
-  sutran: { label: "SUTRAN", country: "Perú", category: "Vehículos y tránsito" },
-  apeseg: { label: "APESEG", country: "Perú", category: "Vehículos y tránsito" },
-  sbs: { label: "SBS", country: "Perú", category: "Vehículos y tránsito" },
-  // México — Leyes y regulación
-  dof: { label: "DOF", country: "México", category: "Leyes y regulación" },
-  diputados: { label: "Diputados", country: "México", category: "Leyes y regulación" },
-  cnbv: { label: "CNBV", country: "México", category: "Leyes y regulación" },
-  banxico: { label: "Banxico", country: "México", category: "Leyes y regulación" },
-  // México — Justicia y fiscalías
-  scjn: { label: "SCJN", country: "México", category: "Justicia y fiscalías" },
-  fiscalia: { label: "Fiscalía", country: "México", category: "Justicia y fiscalías" },
-  // México — Otros
-  siem: { label: "SIEM", country: "México", category: "Otros" },
+// Meta-tool the chat route adds to activate sources on demand.
+export const SOURCE_TOOL = "activar_fuentes";
+
+export function parseSource(description: string): {
+  source?: string;
+  country?: string;
+} {
+  const match = description.match(/\(Source: ([^;]+); Country: ([^.)]+)/);
+  return { source: match?.[1]?.trim(), country: match?.[2]?.trim() };
+}
+
+type CountryMeta = { label: string; short: string; flag: string };
+
+// Keyed by the English country name the MCP descriptions use; also the tab
+// order. Countries not listed here show their raw name after these.
+const COUNTRY_META: Record<string, CountryMeta> = {
+  Colombia: { label: "Colombia", short: "CO", flag: "🇨🇴" },
+  Peru: { label: "Perú", short: "PE", flag: "🇵🇪" },
+  Mexico: { label: "México", short: "MX", flag: "🇲🇽" },
+  Brazil: { label: "Brasil", short: "BR", flag: "🇧🇷" },
+  "United States": { label: "Estados Unidos", short: "US", flag: "🇺🇸" },
+  Global: { label: "Global", short: "Global", flag: "🌐" },
+};
+
+export function countryMeta(country: string): CountryMeta {
+  return COUNTRY_META[country] ?? { label: country, short: country, flag: "🌐" };
+}
+
+// Curated countries first, then new ones alphabetically, Global last.
+export function countriesOf(tools: CatalogTool[]): string[] {
+  const present = new Set(tools.map((t) => t.country));
+  const known = Object.keys(COUNTRY_META).filter((c) => c !== "Global");
+  return [
+    ...known.filter((c) => present.has(c)),
+    ...[...present]
+      .filter((c) => !(c in COUNTRY_META))
+      .sort((a, b) => a.localeCompare(b)),
+    ...(present.has("Global") ? ["Global"] : []),
+  ];
+}
+
+// Category by tool-name prefix (`rama_judicial_cases_by_radicado` → `rama`).
+// Sources missing here land in "Otros".
+const CATEGORIES: Record<string, string> = {
+  // Colombia
+  rama: "Justicia y litigios",
+  samai: "Justicia y litigios",
+  consejo: "Justicia y litigios",
+  cndj: "Justicia y litigios",
+  superfinanciera: "Justicia y litigios",
+  registraduria: "Verificación de personas",
+  registro: "Verificación de personas",
+  policia: "Verificación de personas",
+  procuraduria: "Verificación de personas",
+  contraloria: "Verificación de personas",
+  contaduria: "Verificación de personas",
+  adres: "Verificación de personas",
+  ruaf: "Verificación de personas",
+  sicaac: "Verificación de personas",
+  rues: "Empresas e impuestos",
+  supersociedades: "Empresas e impuestos",
+  dian: "Empresas e impuestos",
+  secop: "Contratación pública",
+  ancp: "Contratación pública",
+  runt: "Vehículos y tránsito",
+  simit: "Vehículos y tránsito",
+  // Perú
+  sunat: "Identidad e impuestos",
+  rree: "Identidad e impuestos",
+  sat: "Identidad e impuestos",
+  callao: "Vehículos y tránsito",
+  sutran: "Vehículos y tránsito",
+  apeseg: "Vehículos y tránsito",
+  sbs: "Vehículos y tránsito",
+  oece: "Contratación pública",
+  // México
+  dof: "Leyes y regulación",
+  diputados: "Leyes y regulación",
+  cnbv: "Leyes y regulación",
+  banxico: "Leyes y regulación",
+  cnsf: "Leyes y regulación",
+  scjn: "Justicia y fiscalías",
+  fiscalia: "Justicia y fiscalías",
+  // Brasil
+  djen: "Justicia",
+  cgu: "Sanciones y listas",
+  ibama: "Sanciones y listas",
+  mte: "Sanciones y listas",
+  pgfn: "Deudas y certificados",
+  tst: "Deudas y certificados",
+  caixa: "Deudas y certificados",
+  // Estados Unidos
+  delaware: "Registro de empresas",
+  sunbiz: "Registro de empresas",
+  sec: "Mercado de valores",
+  iapd: "Mercado de valores",
+  ofac: "Sanciones",
   // Global
-  web: { label: "Búsqueda web", country: "Global", category: "Agentes" },
-  extract: { label: "Extract", country: "Global", category: "Agentes" },
-  generate: { label: "Generate", country: "Global", category: "Agentes" },
-  research: { label: "Research", country: "Global", category: "Agentes" },
+  web: "Agentes",
+  extract: "Agentes",
+  generate: "Agentes",
+  research: "Agentes",
 };
 
 // Tools whose category differs from their source's default (docs place
@@ -72,27 +122,17 @@ const TOOL_CATEGORY_OVERRIDES: Record<string, string> = {
   sat_lima_capturas: "Vehículos y tránsito",
 };
 
-export function sourceOf(toolName: string): SourceMeta | undefined {
-  return SOURCES[toolName.split("_")[0] ?? ""];
-}
-
-export function sourceLabel(toolName: string): string | undefined {
-  return sourceOf(toolName)?.label;
-}
-
-export function toolTitle(toolName: string): string {
-  const label = sourceLabel(toolName);
-  return label ? `${label} · ${toolName}` : toolName;
-}
-
-export function countryOf(toolName: string): Country {
-  return sourceOf(toolName)?.country ?? "Global";
-}
-
 export function categoryOf(toolName: string): string {
   return (
-    TOOL_CATEGORY_OVERRIDES[toolName] ?? sourceOf(toolName)?.category ?? "Otros"
+    TOOL_CATEGORY_OVERRIDES[toolName] ??
+    CATEGORIES[toolName.split("_")[0] ?? ""] ??
+    "Otros"
   );
+}
+
+export function toolTitle(toolName: string, source?: string): string {
+  const label = toolName === SOURCE_TOOL ? "Croma" : source;
+  return label ? `${label} · ${toolName}` : toolName;
 }
 
 export const SUGGESTIONS = [

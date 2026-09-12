@@ -52,9 +52,9 @@ export function EmptyState({ onSuggestion }: EmptyStateProps) {
           consultados en tiempo real.
         </h1>
         <p className="mx-auto max-w-md text-balance text-sm leading-relaxed text-muted-foreground">
-          Fuentes judiciales, tributarias y registrales de Colombia, Perú y
-          México — detrás del mismo servidor MCP que puedes conectar a Claude,
-          ChatGPT o Cursor.
+          Fuentes judiciales, tributarias y registrales de Colombia, Perú,
+          México, Brasil y Estados Unidos — detrás del mismo servidor MCP que
+          puedes conectar a Claude, ChatGPT o Cursor.
         </p>
       </div>
       <div className="flex max-w-xl flex-wrap items-center justify-center gap-2">

@@ -1,15 +1,10 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { CROMA_MCP_URL } from "@/lib/croma-tools";
+import { type CatalogTool, parseSource } from "@/lib/sources";
 
 // Catalog of the MCP server's tools for the composer's tool picker.
 // Cached in-memory: the catalog changes rarely and the MCP handshake is the
 // expensive part of this route.
-
-export type CatalogTool = {
-  name: string;
-  title: string;
-  description: string;
-};
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -31,11 +26,17 @@ async function fetchCatalog(): Promise<CatalogTool[]> {
   try {
     const { tools } = await client.listTools();
     return tools
-      .map((tool) => ({
-        name: tool.name,
-        title: tool.title ?? tool.name,
-        description: tool.description ?? "",
-      }))
+      .map((tool) => {
+        const description = tool.description ?? "";
+        const { source, country } = parseSource(description);
+        return {
+          name: tool.name,
+          title: tool.title ?? tool.name,
+          description,
+          source: source ?? tool.name.split("_")[0] ?? tool.name,
+          country: country ?? "Global",
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
   } finally {
     void client.close().catch(() => undefined);

@@ -1,6 +1,7 @@
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import { jsonSchema, tool, type ToolSet } from "ai";
 import { z } from "zod";
+import { parseSource, SOURCE_TOOL } from "@/lib/sources";
 
 // Toolbox over Croma's public MCP server. Contract: real data or an honest
 // generic error — upstream failure details go to the server log, never to the
@@ -150,7 +151,6 @@ export async function createCromaToolbox() {
 // is larger than that (and ~30k tokens of schemas). Unpinned chats therefore
 // start with one tool that lists every source and activates the ones the model
 // picks; prepareStep sends only active tools to the provider.
-export const SOURCE_TOOL = "activar_fuentes";
 const MAX_ACTIVE_TOOLS = 48;
 
 type Source = {
@@ -159,20 +159,20 @@ type Source = {
   tools: string[];
 };
 
-// Tools group by name prefix (`sunat_ruc` → `sunat`); every Croma description
-// ends with "(Source: …; Country: …)".
+// Tools group by name prefix (`sunat_ruc` → `sunat`).
 function groupSources(tools: ToolSet): Map<string, Source> {
   const sources = new Map<string, Source>();
   for (const [name, t] of Object.entries(tools)) {
     const key = name.split("_")[0] ?? name;
-    const description = typeof t.description === "string" ? t.description : "";
-    const match = description.match(/\(Source: ([^;]+); Country: ([^.)]+)/);
+    const { source: label, country } = parseSource(
+      typeof t.description === "string" ? t.description : "",
+    );
     const source = sources.get(key) ?? {
       labels: new Set(),
-      country: match?.[2] ?? "Global",
+      country: country ?? "Global",
       tools: [],
     };
-    if (match?.[1]) source.labels.add(match[1]);
+    if (label) source.labels.add(label);
     source.tools.push(name);
     sources.set(key, source);
   }

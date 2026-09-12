@@ -8,10 +8,10 @@ import {
   CROMA_MCP_URL,
   createCromaToolbox,
   createSourceActivator,
-  SOURCE_TOOL,
 } from "@/lib/croma-tools";
 import { resolveModel } from "@/lib/model";
 import { clientIp, ratelimit } from "@/lib/ratelimit";
+import { SOURCE_TOOL } from "@/lib/sources";
 
 // E2E sample chat over Croma's public MCP server: every turn connects to the
 // real MCP endpoint, exposes its full tool set to the model, and streams tool
