@@ -4,7 +4,12 @@ import {
   streamText,
   type UIMessage,
 } from "ai";
-import { CROMA_MCP_URL, createCromaToolbox } from "@/lib/croma-tools";
+import {
+  CROMA_MCP_URL,
+  createCromaToolbox,
+  createSourceActivator,
+  SOURCE_TOOL,
+} from "@/lib/croma-tools";
 import { resolveModel } from "@/lib/model";
 import { clientIp, ratelimit } from "@/lib/ratelimit";
 
@@ -42,6 +47,17 @@ Reglas:
 - Si una herramienta falla, di solo que la consulta no está disponible por ahora; nunca describas detalles técnicos internos.
 - No des asesoría legal; los datos son informativos.
 - Si piden algo fuera del alcance de Croma, dilo y redirige a lo que sí puedes hacer.`;
+}
+
+// Tool names the conversation already called, newest first.
+function usedToolNames(messages: UIMessage[]): string[] {
+  return [...messages].reverse().flatMap((message) =>
+    [...message.parts].reverse().flatMap((part) => {
+      if (part.type === "dynamic-tool") return [part.toolName];
+      if (part.type.startsWith("tool-")) return [part.type.slice(5)];
+      return [];
+    }),
+  );
 }
 
 export async function POST(req: Request) {
@@ -108,12 +124,17 @@ export async function POST(req: Request) {
 
   // Pinned tools scope this message to the selected sources. The selection is
   // per-request — the client may add, switch, or clear tools between messages.
-  // Unknown names are dropped; an empty result falls back to the full toolbox.
+  // Unknown names are dropped; an empty result falls back to on-demand source
+  // activation over the full toolbox.
   const pinned = pinnedNames.filter((name) => Boolean(toolbox?.tools[name]));
+  const activator =
+    toolbox && pinned.length === 0
+      ? createSourceActivator(toolbox.tools, usedToolNames(messages))
+      : undefined;
   const tools =
     toolbox && pinned.length > 0
       ? Object.fromEntries(pinned.map((name) => [name, toolbox.tools[name]]))
-      : toolbox?.tools;
+      : activator?.tools;
   const pinnedNote =
     pinned.length > 0
       ? `\n\nPara esta consulta el usuario fijó ${
@@ -122,12 +143,23 @@ export async function POST(req: Request) {
             : `las fuentes ${pinned.map((n) => `"${n}"`).join(", ")}`
         }: responde usando solo esas herramientas. Si la pregunta no encaja con ellas, dilo y sugiere ajustar el filtro de fuentes.`
       : "";
+  const preloaded = activator?.activeTools().slice(1) ?? [];
+  const activationNote = activator
+    ? `\n\nAntes de consultar una fuente, actívala con "${SOURCE_TOOL}" (su descripción lista todas las fuentes y herramientas). Nunca llames una herramienta que no esté activa.${
+        preloaded.length > 0
+          ? ` Ya están activas (no hace falta activarlas): ${preloaded.join(", ")}.`
+          : ""
+      }`
+    : "";
 
   const result = streamText({
     model: resolved.model,
-    instructions: instructions() + pinnedNote,
+    instructions: instructions() + pinnedNote + activationNote,
     messages: await convertToModelMessages(messages),
     tools,
+    prepareStep: activator
+      ? () => ({ activeTools: activator.activeTools() })
+      : undefined,
     stopWhen: stepCountIs(8),
     onEnd: () => toolbox?.close(),
     onAbort: () => toolbox?.close(),
