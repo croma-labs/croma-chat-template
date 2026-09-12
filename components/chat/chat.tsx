@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { CircleAlertIcon, RotateCcwIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -22,9 +22,9 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { EmptyState } from "@/components/chat/empty-state";
 import { ChatMessage } from "@/components/chat/message-parts";
 import { SiteHeader } from "@/components/chat/site-header";
-import { type CatalogTool, ToolPicker } from "@/components/chat/tool-picker";
+import { ToolPicker } from "@/components/chat/tool-picker";
 import { Button } from "@/components/ui/button";
-import { sourceLabel } from "@/lib/sources";
+import type { CatalogTool } from "@/lib/sources";
 
 function useToolCatalog() {
   const [catalog, setCatalog] = useState<CatalogTool[]>([]);
@@ -57,6 +57,10 @@ export function Chat() {
   // mid-conversation and the new selection applies from the next question on.
   const [pinnedTools, setPinnedTools] = useState<CatalogTool[]>([]);
   const catalog = useToolCatalog();
+  const sources = useMemo(
+    () => new Map(catalog.map((t) => [t.name, t.source])),
+    [catalog],
+  );
 
   const togglePinnedTool = (tool: CatalogTool) =>
     setPinnedTools((prev) =>
@@ -118,6 +122,7 @@ export function Chat() {
                 isStreaming={status === "streaming"}
                 key={message.id}
                 message={message}
+                sources={sources}
               />
             ))}
 
@@ -165,15 +170,13 @@ export function Chat() {
                   />
                   {pinnedTools.map((tool) => (
                     <button
-                      aria-label={`Quitar ${sourceLabel(tool.name) ?? tool.title}`}
+                      aria-label={`Quitar ${tool.source}`}
                       className="group/chip flex h-7 cursor-pointer items-center gap-1.5 border border-agent/40 bg-agent/5 px-2 font-mono text-[10px] transition-colors duration-150 hover:border-agent/70 active:scale-[0.97]"
                       key={tool.name}
                       onClick={() => togglePinnedTool(tool)}
                       type="button"
                     >
-                      <span className="max-w-36 truncate">
-                        {sourceLabel(tool.name) ?? tool.title}
-                      </span>
+                      <span className="max-w-36 truncate">{tool.source}</span>
                       <XIcon className="size-3 text-muted-foreground transition-colors group-hover/chip:text-foreground" />
                     </button>
                   ))}

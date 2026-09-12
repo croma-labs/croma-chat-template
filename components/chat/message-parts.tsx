@@ -29,9 +29,16 @@ type ChatMessageProps = {
   message: UIMessage;
   isLast: boolean;
   isStreaming: boolean;
+  // tool name → source label, from the live catalog
+  sources: ReadonlyMap<string, string>;
 };
 
-export function ChatMessage({ message, isLast, isStreaming }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  isLast,
+  isStreaming,
+  sources,
+}: ChatMessageProps) {
   if (message.role === "user") {
     return (
       <Message from="user">
@@ -70,21 +77,18 @@ export function ChatMessage({ message, isLast, isStreaming }: ChatMessageProps) 
               part.type === "dynamic-tool"
                 ? part.toolName
                 : part.type.replace(/^tool-/, "");
+            const title = toolTitle(toolName, sources.get(toolName));
             return (
               <Tool className="rounded-none border-line" key={key}>
                 {part.type === "dynamic-tool" ? (
                   <ToolHeader
                     state={part.state}
-                    title={toolTitle(toolName)}
+                    title={title}
                     toolName={toolName}
                     type={part.type}
                   />
                 ) : (
-                  <ToolHeader
-                    state={part.state}
-                    title={toolTitle(toolName)}
-                    type={part.type}
-                  />
+                  <ToolHeader state={part.state} title={title} type={part.type} />
                 )}
                 <ToolContent>
                   {part.input != null && <ToolInput input={part.input} />}

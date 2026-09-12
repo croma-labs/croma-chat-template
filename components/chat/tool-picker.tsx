@@ -18,25 +18,11 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
-  COUNTRIES,
-  type Country,
+  type CatalogTool,
   categoryOf,
-  countryOf,
-  sourceLabel,
+  countriesOf,
+  countryMeta,
 } from "@/lib/sources";
-
-export type CatalogTool = {
-  name: string;
-  title: string;
-  description: string;
-};
-
-const COUNTRY_FLAGS: Record<Country, string> = {
-  Colombia: "🇨🇴",
-  Perú: "🇵🇪",
-  México: "🇲🇽",
-  Global: "🌐",
-};
 
 type ToolPickerProps = {
   tools: CatalogTool[];
@@ -54,29 +40,34 @@ export function ToolPicker({
   onClear,
 }: ToolPickerProps) {
   const [open, setOpen] = useState(false);
-  const [country, setCountry] = useState<Country | "Todas">("Todas");
+  const [country, setCountry] = useState("Todas");
 
   const selectedNames = useMemo(
     () => new Set(selected.map((t) => t.name)),
     [selected],
   );
 
-  // country filter → { groupHeading: tools[] }, preserving taxonomy order
+  // Tabs follow the live catalog, so new countries appear on their own.
+  const countries = useMemo(() => countriesOf(tools), [tools]);
+
+  // country filter → { groupHeading: tools[] }, countries in tab order
   const groups = useMemo(() => {
     const filtered =
       country === "Todas"
-        ? tools
-        : tools.filter((t) => countryOf(t.name) === country);
+        ? [...tools].sort(
+            (a, b) =>
+              countries.indexOf(a.country) - countries.indexOf(b.country),
+          )
+        : tools.filter((t) => t.country === country);
     const byGroup = new Map<string, CatalogTool[]>();
     for (const tool of filtered) {
+      const { flag, label } = countryMeta(tool.country);
       const heading =
-        country === "Todas"
-          ? `${COUNTRY_FLAGS[countryOf(tool.name)]} ${countryOf(tool.name)}`
-          : categoryOf(tool.name);
+        country === "Todas" ? `${flag} ${label}` : categoryOf(tool.name);
       byGroup.set(heading, [...(byGroup.get(heading) ?? []), tool]);
     }
     return byGroup;
-  }, [tools, country]);
+  }, [tools, countries, country]);
 
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -123,11 +114,11 @@ export function ToolPicker({
         )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-88 p-0" sideOffset={8}>
-        <div className="flex items-stretch divide-x divide-line border-b border-line">
-          {(["Todas", ...COUNTRIES] as const).map((option) => (
+        <div className="flex items-stretch divide-x divide-line overflow-x-auto border-b border-line">
+          {["Todas", ...countries].map((option) => (
             <button
               className={cn(
-                "flex-1 cursor-pointer px-1.5 py-2 text-center font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150",
+                "flex-1 shrink-0 cursor-pointer whitespace-nowrap px-1.5 py-2 text-center font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-150",
                 country === option
                   ? "bg-foreground text-background"
                   : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
@@ -138,15 +129,7 @@ export function ToolPicker({
             >
               {option === "Todas"
                 ? "Todas"
-                : `${COUNTRY_FLAGS[option]} ${
-                    option === "Colombia"
-                      ? "CO"
-                      : option === "Perú"
-                        ? "PE"
-                        : option === "México"
-                          ? "MX"
-                          : "Global"
-                  }`}
+                : `${countryMeta(option).flag} ${countryMeta(option).short}`}
             </button>
           ))}
         </div>
@@ -162,7 +145,7 @@ export function ToolPicker({
                     <CommandItem
                       key={tool.name}
                       onSelect={() => onToggle(tool)}
-                      value={`${tool.name} ${tool.title} ${sourceLabel(tool.name) ?? ""} ${categoryOf(tool.name)}`}
+                      value={`${tool.name} ${tool.title} ${tool.source} ${categoryOf(tool.name)}`}
                     >
                       <span
                         className={cn(
