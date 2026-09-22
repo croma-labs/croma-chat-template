@@ -12,8 +12,16 @@ export type CatalogTool = {
   country: string;
 };
 
-// Meta-tool the chat route adds to activate sources on demand.
-export const SOURCE_TOOL = "activar_fuentes";
+// Meta-tool the chat route adds to find tools on demand.
+export const SEARCH_TOOL = "buscar_herramientas";
+
+// Croma's monitor tools (create_monitor, list_monitors, list_monitor_matches…)
+// carry no "(Source: …)" suffix, so they are named here.
+export const MONITORS_SOURCE = "Monitores";
+
+export function isMonitorTool(toolName: string): boolean {
+  return /(^|_)monitors?(_|$)/.test(toolName);
+}
 
 export function parseSource(description: string): {
   source?: string;
@@ -123,6 +131,7 @@ const TOOL_CATEGORY_OVERRIDES: Record<string, string> = {
 };
 
 export function categoryOf(toolName: string): string {
+  if (isMonitorTool(toolName)) return MONITORS_SOURCE;
   return (
     TOOL_CATEGORY_OVERRIDES[toolName] ??
     CATEGORIES[toolName.split("_")[0] ?? ""] ??
@@ -131,13 +140,19 @@ export function categoryOf(toolName: string): string {
 }
 
 export function toolTitle(toolName: string, source?: string): string {
-  const label = toolName === SOURCE_TOOL ? "Croma" : source;
+  const label =
+    toolName === SEARCH_TOOL
+      ? "Croma"
+      : isMonitorTool(toolName)
+        ? MONITORS_SOURCE
+        : source;
   return label ? `${label} · ${toolName}` : toolName;
 }
 
 export const SUGGESTIONS = [
   "¿Qué publicó hoy el DOF en México?",
   "Consulta el RUC 20100047218 en SUNAT",
+  "Avísame cuando haya contratos nuevos de Ecopetrol en el SECOP",
   "Busca a Ecopetrol en el registro mercantil (RUES)",
   "¿Cómo está el clima ahora en el Valle de Aburrá?",
   "Jurisprudencia de la SCJN sobre pensión alimenticia",

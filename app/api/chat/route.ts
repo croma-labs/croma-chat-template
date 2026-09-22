@@ -4,50 +4,20 @@ import {
   streamText,
   type UIMessage,
 } from "ai";
-import {
-  CROMA_MCP_URL,
-  createCromaToolbox,
-  createSourceActivator,
-} from "@/lib/croma-tools";
+import { createCromaToolbox, createToolSearch } from "@/lib/croma-tools";
+import { instructions } from "@/lib/instructions";
 import { resolveModel } from "@/lib/model";
 import { clientIp, ratelimit } from "@/lib/ratelimit";
-import { SOURCE_TOOL } from "@/lib/sources";
 
 // E2E sample chat over Croma's public MCP server: every turn connects to the
-// real MCP endpoint, exposes its full tool set to the model, and streams tool
-// calls + markdown back to the UI.
+// real MCP endpoint, lets the model find the tools it needs by keyword, and
+// streams tool calls + markdown back to the UI.
 
 export const maxDuration = 60;
 
 const MAX_MESSAGES = 24;
 const MAX_MESSAGE_CHARS = 4_000;
 const MAX_PINNED_TOOLS = 16;
-
-function instructions() {
-  const today = new Date().toISOString().slice(0, 10);
-  return `Eres el asistente de datos públicos de Croma. Hoy es ${today}.
-
-Croma es la API de datos públicos de gobierno para Latinoamérica: fuentes judiciales, tributarias, registrales y de screening de Colombia, Perú, México, Brasil y Estados Unidos detrás de un solo endpoint tipado. Esta app es una demo end-to-end del servidor MCP de Croma (${CROMA_MCP_URL}) construida con el AI SDK de Vercel.
-
-Cobertura:
-- Colombia: Rama Judicial (procesos por nombre, entidad o radicado), SICAAC (insolvencia), Superfinanciera (quejas), Registraduría (vigencia de cédula), Policía (antecedentes penales), Procuraduría (SIRI), Contraloría (SIBOR), Contaduría (BDME), SECOP (contratación pública), RUES (registro mercantil), Supersociedades (estados financieros), RUNT (vehículos), SIMIT (multas), Legalize (leyes y normas), SIATA (clima Valle de Aburrá).
-- Perú: SUNAT (RUC y contribuyentes), RREE (carné de extranjería), SAT Lima (deudas y capturas), Callao (papeletas), SUTRAN (infracciones), APESEG y SBS (SOAT).
-- México: DOF (diario oficial desde 1995), Cámara de Diputados (leyes federales y reformas), SCJN (jurisprudencia, 300k+ tesis), CNBV (normas bancarias), Banxico (circulares), SIEM (directorio empresarial), fiscalías estatales (boletines).
-- Brasil: CGU (sanciones), PGFN (deuda activa), DJEN (publicaciones judiciales), TST (certidão trabalhista), Caixa (FGTS), MTE (trabajo esclavo), IBAMA (embargos ambientales).
-- Estados Unidos: SEC (Form D y 13F), IAPD (asesores de inversión), OFAC (sanciones), Delaware y Sunbiz (registro de empresas).
-- Global: búsqueda web para agentes.
-
-Tienes acceso a las herramientas del servidor MCP real de Croma. Úsalas siempre que el usuario quiera ver datos en vivo. Si falta un dato necesario para consultar (por ejemplo el radicado, la placa, la cédula o el RUC), pídelo en lugar de adivinar.
-
-Reglas:
-- Responde en el idioma del usuario; por defecto, español.
-- Sé breve y directo. Usa Markdown ligero (listas y negritas cortas, tablas solo cuando aportan).
-- Nunca inventes datos. Si una herramienta devuelve un error o no hay datos, dilo claramente y no lo compenses con datos imaginados. "found: false" es una respuesta definitiva, no un error.
-- Si una herramienta devuelve status "pending" con un job_id, vuelve a llamarla con los mismos argumentos para obtener el resultado (hasta 3 reintentos). Solo si sigue pendiente, dile al usuario que la fuente oficial está lenta y que lo intente de nuevo en un momento.
-- Si una herramienta falla, di solo que la consulta no está disponible por ahora; nunca describas detalles técnicos internos.
-- No des asesoría legal; los datos son informativos.
-- Si piden algo fuera del alcance de Croma, dilo y redirige a lo que sí puedes hacer.`;
-}
 
 // Tool names the conversation already called, newest first.
 function usedToolNames(messages: UIMessage[]): string[] {
@@ -124,17 +94,17 @@ export async function POST(req: Request) {
 
   // Pinned tools scope this message to the selected sources. The selection is
   // per-request — the client may add, switch, or clear tools between messages.
-  // Unknown names are dropped; an empty result falls back to on-demand source
-  // activation over the full toolbox.
+  // Unknown names are dropped; an empty result falls back to on-demand tool
+  // search over the full toolbox.
   const pinned = pinnedNames.filter((name) => Boolean(toolbox?.tools[name]));
-  const activator =
+  const search =
     toolbox && pinned.length === 0
-      ? createSourceActivator(toolbox.tools, usedToolNames(messages))
+      ? createToolSearch(toolbox.tools, usedToolNames(messages))
       : undefined;
   const tools =
     toolbox && pinned.length > 0
       ? Object.fromEntries(pinned.map((name) => [name, toolbox.tools[name]]))
-      : activator?.tools;
+      : search?.tools;
   const pinnedNote =
     pinned.length > 0
       ? `\n\nPara esta consulta el usuario fijó ${
@@ -143,22 +113,14 @@ export async function POST(req: Request) {
             : `las fuentes ${pinned.map((n) => `"${n}"`).join(", ")}`
         }: responde usando solo esas herramientas. Si la pregunta no encaja con ellas, dilo y sugiere ajustar el filtro de fuentes.`
       : "";
-  const preloaded = activator?.activeTools().slice(1) ?? [];
-  const activationNote = activator
-    ? `\n\nAntes de consultar una fuente, actívala con "${SOURCE_TOOL}" (su descripción lista todas las fuentes y herramientas). Nunca llames una herramienta que no esté activa.${
-        preloaded.length > 0
-          ? ` Ya están activas (no hace falta activarlas): ${preloaded.join(", ")}.`
-          : ""
-      }`
-    : "";
 
   const result = streamText({
     model: resolved.model,
-    instructions: instructions() + pinnedNote + activationNote,
+    instructions: instructions({ search: Boolean(search) }) + pinnedNote,
     messages: await convertToModelMessages(messages),
     tools,
-    prepareStep: activator
-      ? () => ({ activeTools: activator.activeTools() })
+    prepareStep: search
+      ? () => ({ activeTools: search.activeTools() })
       : undefined,
     stopWhen: stepCountIs(8),
     onEnd: () => toolbox?.close(),
