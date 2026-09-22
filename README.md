@@ -21,13 +21,16 @@ Streaming chat built with the [Vercel AI SDK](https://ai-sdk.dev) and [AI Elemen
 
 ## What's inside
 
-- **Live MCP tools**: every request opens a client against `https://api.croma.run/mcp` and exposes the full Croma tool set to the model: Rama Judicial, SUNAT, RUES, SECOP, DOF, SCJN, SIATA, and 40+ more sources.
+- **Live MCP tools**: every request opens a client against `https://api.croma.run/mcp` with the full Croma catalog (200+ tools from 70+ sources: Rama Judicial, SUNAT, RUES, SECOP, DOF, SCJN, SIATA, and more).
+- **Tool search**: the model starts with one `buscar_herramientas` tool and finds the tools it needs by keyword or regex over their names and descriptions (in-process, ~1 ms). Only what it finds is sent to the provider, which keeps Groq under its 128-tool limit and the prompt small.
+- **Monitors from chat**: *"Avísame cuando haya contratos nuevos de Ecopetrol en el SECOP"* creates a Croma monitor, a saved search that emails what is new after each refresh of the source. `create_monitor` and `list_monitors` are always loaded; the agent finds the source's search, asks for the recipient emails, and never invents them.
 - **Streaming everything**: text, reasoning, and tool calls stream token-by-token via AI SDK v7's UI message stream.
 - **World-class chat UI**: [AI Elements](https://ai-sdk.dev/elements) components on a swiss, ruled-sheet design system: hairline grid rails, mono eyebrow labels, square surfaces, inverted selection, conversation with stick-to-bottom scrolling, markdown responses (Streamdown), collapsible tool cards with friendly source labels, reasoning disclosure, stop/regenerate, dark mode.
 - **Optional tool pinning**: a docs-style picker in the composer (country → category → source, searchable) pins one or more MCP tools. The selection applies per message: add, switch, or clear sources mid-conversation and the next question uses the new scope. The catalog is fetched live from the server and cached.
 - **Claude-first model resolution**: runs on `claude-opus-5` when `ANTHROPIC_API_KEY` is set, and falls back to Groq's `openai/gpt-oss-120b` otherwise. Swap models in one file.
 - **Optional rate limiting**: add two Upstash env vars and `/api/chat` is limited to 10 requests per minute per IP. Without them, the limiter is a no-op.
 - **Honest data handling**: results are truncated before they blow up context, tool failures return a generic message (details stay in server logs), and Croma's async "pending job" lookups are automatically re-polled.
+- **Groq-proof tool calls**: optional fields accept `null` (including `anyOf` unions), and when Groq rejects a tool call against its schema the step is retried once with the rejection spelled out instead of failing the turn.
 
 ## One-click deploy
 
@@ -73,8 +76,11 @@ app/api/chat/route.ts        streamText + system prompt + UI message stream (+ o
 app/api/tools/route.ts       Tool catalog for the picker (MCP listTools, cached in-memory)
 components/chat/chat.tsx     Chat orchestrator (useChat, composer, transcript)
 components/chat/…            Header, empty state, message parts, tool picker
-lib/croma-tools.ts           MCP client: discovery, auth, result truncation, error shielding
+lib/croma-tools.ts           MCP client (auth, null-tolerant schemas, truncation, error shielding) + tool search
+lib/instructions.ts          System prompt: coverage, monitor recipe, tool search
 lib/model.ts                 Model resolution (Claude first, Groq fallback)
+lib/tool-call-retry.ts       Middleware: retry a step once when the provider rejects a tool call
+scripts/eval-tools.ts        Wiring check: right tool and right create_monitor arguments, nothing executed
 lib/ratelimit.ts             Optional Upstash rate limiter (active when env vars are set)
 lib/sources.ts               Source taxonomy (country → category → source, mirrors the docs)
 ```
@@ -82,7 +88,7 @@ lib/sources.ts               Source taxonomy (country → category → source, m
 Each `POST /api/chat`:
 
 1. Opens a fresh MCP client over streamable HTTP with `Authorization: Bearer $CROMA_API_KEY`.
-2. Discovers the server's tools and hands them to `streamText` (`stopWhen: stepCountIs(8)` allows multi-step tool use, including re-polling Croma's async jobs).
+2. Discovers the server's tools and hands them to `streamText` with `buscar_herramientas`, `create_monitor` and `list_monitors` active; `prepareStep` adds each tool the model finds, plus the tools the conversation already used (`stopWhen: stepCountIs(8)` allows multi-step tool use, including re-polling Croma's async jobs).
 3. Streams UI message chunks (text, reasoning, tool input/output) back to the client and closes the MCP client when the stream ends, aborts, or errors.
 
 If the MCP server is unreachable, the chat degrades gracefully: the model still answers, just without live-data tools.
@@ -90,7 +96,8 @@ If the MCP server is unreachable, the chat degrades gracefully: the model still 
 ## Customization
 
 - **Model**: edit `lib/model.ts`. Any [AI SDK provider](https://ai-sdk.dev/providers/ai-sdk-providers) works.
-- **System prompt**: `instructions()` in `app/api/chat/route.ts`. Coverage list, tone, language, and the pending-job retry policy live here.
+- **System prompt**: `instructions()` in `lib/instructions.ts`. Coverage list, tone, language, the monitor recipe and the pending-job retry policy live here.
+- **Checking the wiring**: `bun run eval:tools` (or `bun scripts/eval-tools.ts 3` for three rounds) asks 22 questions against the live catalog and checks that the model picks the right tool, asks for an email before creating a monitor, and calls `create_monitor` with a monitorable search and that search's own fields. Nothing is executed, so it creates nothing and spends no credits.
 - **Suggestions & source taxonomy**: `SUGGESTIONS` and the country/category maps in `lib/sources.ts`.
 - **Rate limits**: algorithm and window in `lib/ratelimit.ts`.
 - **Look & feel**: design tokens in `app/globals.css` (`--line` hairlines, `--agent` accent, square radius; shadcn/Tailwind v4); components in `components/chat/` and `components/ai-elements/`.

@@ -1,6 +1,11 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { CROMA_MCP_URL } from "@/lib/croma-tools";
-import { type CatalogTool, parseSource } from "@/lib/sources";
+import {
+  type CatalogTool,
+  isMonitorTool,
+  MONITORS_SOURCE,
+  parseSource,
+} from "@/lib/sources";
 
 // Catalog of the MCP server's tools for the composer's tool picker.
 // Cached in-memory: the catalog changes rarely and the MCP handshake is the
@@ -33,7 +38,11 @@ async function fetchCatalog(): Promise<CatalogTool[]> {
           name: tool.name,
           title: tool.title ?? tool.name,
           description,
-          source: source ?? tool.name.split("_")[0] ?? tool.name,
+          source:
+            source ??
+            (isMonitorTool(tool.name)
+              ? MONITORS_SOURCE
+              : (tool.name.split("_")[0] ?? tool.name)),
           country: country ?? "Global",
         };
       })

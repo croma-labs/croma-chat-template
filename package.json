@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "generate:assets": "bun scripts/generate-assets.ts"
+    "generate:assets": "bun scripts/generate-assets.ts",
+    "eval:tools": "bun scripts/eval-tools.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.38",
